@@ -18,7 +18,7 @@ import {
 import {decode, decodeAudioData} from './utils';
 
 const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
+  apiKey: process.env.API_KEY,
   apiVersion: 'v1alpha',
 });
 let model = 'lyria-realtime-exp';
@@ -107,6 +107,11 @@ class WeightSlider extends LitElement {
       flex-direction: column;
       justify-content: center;
       align-items: center;
+      border-radius: 4px;
+    }
+    .scroll-container:focus-visible {
+      outline: 2px solid #5200ff;
+      outline-offset: 2px;
     }
     .value-display {
       font-size: 1.3vmin;
@@ -186,6 +191,21 @@ class WeightSlider extends LitElement {
     this.dispatchInputEvent();
   }
 
+  private handleKeyDown(e: KeyboardEvent) {
+    let changed = false;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+      this.value = Math.min(2, this.value + 0.05);
+      changed = true;
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+      this.value = Math.max(0, this.value - 0.05);
+      changed = true;
+    }
+    if (changed) {
+      e.preventDefault();
+      this.dispatchInputEvent();
+    }
+  }
+
   private updateValueFromPosition(clientY: number) {
     if (!this.containerBounds) return;
 
@@ -218,8 +238,16 @@ class WeightSlider extends LitElement {
     return html`
       <div
         class="scroll-container"
+        role="slider"
+        tabindex="0"
+        aria-valuemin="0"
+        aria-valuemax="2"
+        aria-valuenow=${this.value.toFixed(2)}
+        aria-orientation="vertical"
+        aria-label="Prompt weight"
         @pointerdown=${this.handlePointerDown}
-        @wheel=${this.handleWheel}>
+        @wheel=${this.handleWheel}
+        @keydown=${this.handleKeyDown}>
         <div class="slider-container">
           <div id="thumb" style=${thumbStyle}></div>
         </div>
@@ -238,6 +266,12 @@ class IconButton extends LitElement {
       align-items: center;
       justify-content: center;
       pointer-events: none;
+      /* For focus outline */
+      border-radius: 50%;
+      outline-offset: 4px;
+    }
+    :host(:focus-visible) {
+      outline: 3px solid #5200ff;
     }
     :host(:hover) svg {
       transform: scale(1.2);
@@ -257,6 +291,23 @@ class IconButton extends LitElement {
       cursor: pointer;
     }
   ` as CSSResultGroup;
+
+  @property({type: String, reflect: true, attribute: 'aria-label'})
+  ariaLabel = '';
+
+  override connectedCallback() {
+    super.connectedCallback();
+    this.setAttribute('role', 'button');
+    if (!this.hasAttribute('tabindex')) {
+      this.setAttribute('tabindex', '0');
+    }
+    this.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.click();
+      }
+    });
+  }
 
   // Method to be implemented by subclasses to provide the specific icon SVG
   protected renderIcon() {
@@ -497,9 +548,11 @@ class ToastMessage extends LitElement {
   @property({type: Boolean}) showing = false;
 
   override render() {
-    return html`<div class=${classMap({showing: this.showing, toast: true})}>
+    return html`<div
+      class=${classMap({showing: this.showing, toast: true})}
+      role="alert">
       <div class="message">${this.message}</div>
-      <button @click=${this.hide}>✕</button>
+      <button @click=${this.hide} aria-label="Close message">✕</button>
     </div>`;
   }
 
@@ -668,7 +721,10 @@ class PromptController extends LitElement {
       'prompt': true,
     });
     return html`<div class=${classes}>
-      <button class="remove-button" @click=${this.dispatchPromptRemoved}
+      <button
+        class="remove-button"
+        @click=${this.dispatchPromptRemoved}
+        aria-label="Remove prompt"
         >×</button
       >
       <weight-slider
@@ -683,6 +739,7 @@ class PromptController extends LitElement {
           contenteditable="plaintext-only"
           @keydown=${this.handleTextKeyDown}
           @blur=${this.updateText}
+          aria-label="Prompt text"
           >${this.text}</span
         >
       </div>
@@ -864,6 +921,11 @@ class SettingsController extends LitElement {
       min-width: 2.5em;
     }
     .advanced-toggle {
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      text-align: left;
       cursor: pointer;
       margin: 2vmin 0 1vmin 0;
       color: #aaa;
@@ -874,6 +936,11 @@ class SettingsController extends LitElement {
     }
     .advanced-toggle:hover {
       color: #eee;
+    }
+    .advanced-toggle:focus-visible {
+      outline: 2px solid #5200ff;
+      outline-offset: 2px;
+      border-radius: 2px;
     }
     .advanced-settings {
       display: grid;
@@ -922,11 +989,11 @@ class SettingsController extends LitElement {
     }
   `;
 
-  private readonly defaultConfig = {
+  private readonly defaultConfig: LiveMusicGenerationConfig = {
     temperature: 1.1,
     topK: 40,
     guidance: 4.0,
-    musicGenerationMode: 'QUALITY',
+    musicGenerationMode: 'quality',
   };
 
   @state() private config: LiveMusicGenerationConfig = this.defaultConfig;
@@ -1056,9 +1123,9 @@ class SettingsController extends LitElement {
       'visible': this.showAdvanced,
     });
     const musicGenerationModeMap = new Map<string, string>([
-      ['Quality', 'QUALITY'],
-      ['Diversity', 'DIVERSITY'],
-      ['Vocalization', 'VOCALIZATION'],
+      ['Quality', 'quality'],
+      ['Diversity', 'diversity'],
+      ['Vocalization', 'vocalization'],
     ]);
     const scaleMap = new Map<string, string>([
       ['Auto', 'SCALE_UNSPECIFIED'],
@@ -1195,7 +1262,7 @@ class SettingsController extends LitElement {
           <label for="musicGenerationMode">Music generation mode</label>
           <select
             id="musicGenerationMode"
-            .value=${cfg.musicGenerationMode || 'QUALITY'}
+            .value=${cfg.musicGenerationMode || 'quality'}
             @change=${this.handleInputChange}>
             ${[...musicGenerationModeMap.entries()].map(
               ([displayName, enumValue]) =>
@@ -1234,9 +1301,12 @@ class SettingsController extends LitElement {
           </div>
         </div>
       </div>
-      <div class="advanced-toggle" @click=${this.toggleAdvancedSettings}>
+      <button
+        class="advanced-toggle"
+        @click=${this.toggleAdvancedSettings}
+        aria-expanded=${this.showAdvanced}>
         ${this.showAdvanced ? 'Hide' : 'Show'} Advanced Settings
-      </div>
+      </button>
     `;
   }
 }
@@ -1346,9 +1416,8 @@ class PromptDj extends LitElement {
   private nextPromptId: number; // Monotonically increasing ID for new prompts
   private session: LiveMusicSession;
   private readonly sampleRate = 48000;
-  private audioContext = new (window.AudioContext || window.webkitAudioContext)(
-    {sampleRate: this.sampleRate},
-  );
+  private audioContext = new (window.AudioContext ||
+    (window as any).webkitAudioContext)({sampleRate: this.sampleRate});
   private outputNode: GainNode = this.audioContext.createGain();
   private nextStartTime = 0;
   private readonly bufferTime = 2; // adds an audio buffer in case of netowrk latency
@@ -1668,7 +1737,9 @@ class PromptDj extends LitElement {
           ${this.renderPrompts()}
         </div>
         <div class="add-prompt-button-container">
-          <add-prompt-button @click=${this.handleAddPrompt}></add-prompt-button>
+          <add-prompt-button
+            @click=${this.handleAddPrompt}
+            aria-label="Add new prompt"></add-prompt-button>
         </div>
       </div>
       <div id="settings-container">
@@ -1678,8 +1749,15 @@ class PromptDj extends LitElement {
       <div class="playback-container">
         <play-pause-button
           @click=${this.handlePlayPause}
-          .playbackState=${this.playbackState}></play-pause-button>
-        <reset-button @click=${this.handleReset}></reset-button>
+          .playbackState=${this.playbackState}
+          aria-label=${this.playbackState === 'playing'
+            ? 'Pause music'
+            : this.playbackState === 'loading'
+              ? 'Loading music'
+              : 'Play music'}></play-pause-button>
+        <reset-button
+          @click=${this.handleReset}
+          aria-label="Reset session"></reset-button>
       </div>
       <toast-message></toast-message>`;
   }
